@@ -1,18 +1,26 @@
-import argparse
-import random
-import requests
-import time
-from typing import Dict, List, Tuple, Optional
+"""
+Amazon Best Sellers Scraper
 
-from tqdm import tqdm
-from bs4 import BeautifulSoup
-import pandas as pd
+This script scrapes product data from the Amazon Best Sellers pages for various categories.
+It supports command-line arguments to configure the Amazon domain, sleep intervals between
+requests, and output file location. The scraped data is saved to a CSV file.
+"""
+
+import argparse
 import logging
+import random
+import time
 from datetime import date
+from typing import Dict, List, Optional, Tuple
+
+import pandas as pd
+import requests
+from bs4 import BeautifulSoup
+from tqdm import tqdm
 
 # Configure logging
 logging.basicConfig(
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
@@ -20,42 +28,70 @@ logger = logging.getLogger(__name__)
 # Define the headers list for user-agent rotation
 HEADERS_LIST = [
     {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.95 Safari/537.36"
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_4) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/55.0.2883.95 Safari/537.36"
+        )
     },
     {
         "User-Agent": "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:55.0) Gecko/20100101 Firefox/55.0"
     },
     {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_7_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/27.0.1453.93 Safari/537.36"
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_7_2) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/27.0.1453.93 Safari/537.36"
+        )
     },
     {
-        "User-Agent": "Mozilla/6.0 (X11; Linux x86_64) AppleWebKit/535.11 (KHTML, like Gecko) Ubuntu/11.10 Chromium/27.0.1453.93 Chrome/27.0.1453.93 Safari/537.36"
+        "User-Agent": (
+            "Mozilla/6.0 (X11; Linux x86_64) AppleWebKit/535.11 (KHTML, like Gecko) "
+            "Ubuntu/11.10 Chromium/27.0.1453.93 Chrome/27.0.1453.93 Safari/537.36"
+        )
     },
     {
-        "User-Agent": "Mozilla/5.0 (Windows NT 6.2; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/27.0.1453.94 Safari/537.36"
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 6.2; WOW64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/27.0.1453.94 Safari/537.36"
+        )
     },
     {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64; Trident/7.0; .NET4.0C; .NET4.0E; .NET CLR 2.0.50727; .NET CLR 3.0.30729; .NET CLR 3.5.30729; InfoPath.3; rv:11.0)"
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; WOW64; Trident/7.0; .NET4.0C; .NET4.0E; "
+            ".NET CLR 2.0.50727; .NET CLR 3.0.30729; .NET CLR 3.5.30729; InfoPath.3; rv:11.0)"
+        )
     },
     {"User-Agent": "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Trident/5.0)"},
     {"User-Agent": "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.0; Trident/4.0)"},
     {"User-Agent": "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.0)"},
-    {"User-Agent": "Mozilla/5.0 (Windows NT 6.1; rv:2.0.1) Gecko/20100101 Firefox/4.0.1"},
     {
-        "User-Agent": "Opera/9.80 (Macintosh; Intel Mac OS X 10.6.8; U; en) Presto/2.8.131 Version/11.11"
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 6.1; rv:2.0.1) Gecko/20100101 Firefox/4.0.1"
+        )
     },
     {
-        "User-Agent": "Opera/9.80 (Windows NT 6.1; U; en) Presto/2.8.131 Version/11.11"
+        "User-Agent": (
+            "Opera/9.80 (Macintosh; Intel Mac OS X 10.6.8; U; en) "
+            "Presto/2.8.131 Version/11.11"
+        )
     },
+    {"User-Agent": "Opera/9.80 (Windows NT 6.1; U; en) Presto/2.8.131 Version/11.11"},
     {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_7_0) AppleWebKit/535.11 (KHTML, like Gecko) Chrome/17.0.963.56 Safari/535.11"
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_7_0) AppleWebKit/535.11 "
+            "(KHTML, like Gecko) Chrome/17.0.963.56 Safari/535.11"
+        )
     },
     {"User-Agent": "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; Maxthon 2.0)"},
-    {"User-Agent": "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; TencentTraveler 4.0)"},
+    {
+        "User-Agent": "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; TencentTraveler 4.0)"
+    },
     {"User-Agent": "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1)"},
     {"User-Agent": "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; The World)"},
     {
-        "User-Agent": "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; Trident/4.0; SE 2.X MetaSr 1.0; SE 2.X MetaSr 1.0; .NET CLR 2.0.50727; SE 2.X MetaSr 1.0)"
+        "User-Agent": (
+            "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; Trident/4.0; "
+            "SE 2.X MetaSr 1.0; SE 2.X MetaSr 1.0; .NET CLR 2.0.50727; SE 2.X MetaSr 1.0)"
+        )
     },
     {"User-Agent": "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; 360SE)"},
     {"User-Agent": "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; Avant Browser)"},
@@ -108,7 +144,9 @@ def get_random_proxy() -> Dict[str, str]:
     return random.choice(ALL_PROXIES)
 
 
-def get_links(amazon_url: str = "https://www.amazon.com") -> Tuple[List[str], List[str]]:
+def get_links(
+    amazon_url: str = "https://www.amazon.com",
+) -> Tuple[List[str], List[str]]:
     """
     Fetches best seller category links from the Amazon Best Sellers page.
 
@@ -121,7 +159,7 @@ def get_links(amazon_url: str = "https://www.amazon.com") -> Tuple[List[str], Li
             - List of URLs for each best seller category.
             - List of category names corresponding to those URLs.
     """
-    logger.info(f"Fetching best seller categories from {amazon_url}")
+    logger.info("Fetching best seller categories from %s", amazon_url)
     url = f"{amazon_url}/gp/bestsellers?ref_=nav_cs_bestsellers"
     try:
         response = requests.get(
@@ -129,7 +167,7 @@ def get_links(amazon_url: str = "https://www.amazon.com") -> Tuple[List[str], Li
         )
         response.raise_for_status()
     except requests.RequestException as e:
-        logger.error(f"Failed to fetch best sellers page: {e}")
+        logger.error("Failed to fetch best sellers page: %s", e)
         return [], []
 
     content = BeautifulSoup(response.content, "html.parser")
@@ -142,7 +180,7 @@ def get_links(amazon_url: str = "https://www.amazon.com") -> Tuple[List[str], Li
             "div", {"data-card-metrics-id": "p13n-zg-nav-tree-all_zeitgeist-lists_1"}
         )[0].find_all("a")
     except (IndexError, AttributeError) as e:
-        logger.error(f"Failed to parse best seller categories: {e}")
+        logger.error("Failed to parse best seller categories: %s", e)
         return [], []
 
     for item in all_category_bestsellers:
@@ -166,7 +204,9 @@ def scrape_next_page(content: BeautifulSoup, amazon_url: str) -> Optional[str]:
     """
     try:
         next_page_href = content.ul.find_all("a")[1]["href"]
-        return amazon_url + next_page_href
+        if isinstance(next_page_href, str):
+            return amazon_url + next_page_href
+        return None
     except (AttributeError, IndexError, TypeError):
         return None
 
@@ -203,11 +243,15 @@ def scrape_product_details(
             break
         except requests.RequestException as e:
             logger.warning(
-                f"Request failed for {url} (attempt {attempt + 1}/{max_retries}): {e}"
+                "Request failed for %s (attempt %d/%d): %s",
+                url,
+                attempt + 1,
+                max_retries,
+                e,
             )
             time.sleep(random.uniform(*sleep_range))
     else:
-        logger.error(f"Failed to retrieve {url} after {max_retries} attempts.")
+        logger.error("Failed to retrieve %s after %s attempts.", url, max_retries)
         return []
 
     content = BeautifulSoup(response.content, "html.parser")
@@ -235,7 +279,9 @@ def scrape_product_details(
             data["item"] = "Not Found"
 
         try:
-            data["price"] = item.select("._cDEzb_p13n-sc-price_3mJ9Z")[0].get_text(strip=True)
+            data["price"] = item.select("._cDEzb_p13n-sc-price_3mJ9Z")[0].get_text(
+                strip=True
+            )
         except (IndexError, AttributeError):
             data["price"] = "Not Found"
 
@@ -245,7 +291,11 @@ def scrape_product_details(
             data["rating"] = "Not Found"
 
         try:
-            data["reviews"] = item.select(".a-icon-row a")[0].select(".a-size-small")[0].get_text(strip=True)
+            data["reviews"] = (
+                item.select(".a-icon-row a")[0]
+                .select(".a-size-small")[0]
+                .get_text(strip=True)
+            )
         except (IndexError, AttributeError):
             data["reviews"] = "Not Found"
 
@@ -260,7 +310,26 @@ def scrape_product_details(
     return item_details
 
 
-def main():
+def main() -> None:
+    """
+    Entry point for the Amazon Best Sellers scraper.
+
+    Parses command-line arguments to configure the scraper, including the Amazon domain URL,
+    output CSV file path, and sleep intervals between HTTP requests to mimic human behavior.
+    It then fetches category links, scrapes product data from each category, and saves the
+    results to a CSV file if any data is collected.
+
+    Command-line Arguments:
+        --amazon_url (str): The base Amazon URL to scrape from.
+                            Defaults to "https://www.amazon.com".
+        --output (str): Path to the output CSV file.
+                        If not specified, defaults to 'amazon_bestsellers_<date>.csv'.
+        --min_sleep (int): Minimum delay in seconds between HTTP requests. Defaults to 4.
+        --max_sleep (int): Maximum delay in seconds between HTTP requests. Defaults to 10.
+
+    Returns:
+        None
+    """
     parser = argparse.ArgumentParser(description="Scrape Amazon Best Sellers data")
     parser.add_argument(
         "--amazon_url",
@@ -304,7 +373,11 @@ def main():
 
     for link in tqdm(links_to_parse, desc="Scraping categories"):
         scraped_data = scrape_product_details(
-            link, links_to_parse, categories, amazon_url, sleep_range=(min_sleep, max_sleep)
+            link,
+            links_to_parse,
+            categories,
+            amazon_url,
+            sleep_range=(min_sleep, max_sleep),
         )
         if scraped_data:
             scraped_df = pd.DataFrame(scraped_data)
@@ -317,8 +390,8 @@ def main():
         if not output_file:
             output_file = f"amazon_bestsellers_{today}.csv"
         data.to_csv(output_file, index=False)
-        logger.info(f"Saved the results to CSV file: {output_file}")
-        logger.info(f"Total products scraped: {len(data)}")
+        logger.info("Saved the results to CSV file: %s", output_file)
+        logger.info("Total products scraped: %s", len(data))
 
 
 if __name__ == "__main__":
